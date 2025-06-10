@@ -1,0 +1,8 @@
+# These owners will be the default owners for everything in the repo
+* @michaelchase
+
+# Security-related files
+SECURITY.md @michaelchase
+.github/CODEOWNERS @michaelchase
+package.json @michaelchase
+package-lock.json @michaelchase 
