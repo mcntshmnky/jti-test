@@ -1,82 +1,97 @@
 import React, { useEffect, useState } from 'react';
 import { neo4jService } from '../services/neo4jService';
+import { NEO4J_CONFIG } from '../config/neo4j';
 
 const ConnectionTest: React.FC = () => {
-    const [status, setStatus] = useState<'testing' | 'success' | 'error'>('testing');
-    const [message, setMessage] = useState('Testing connection...');
+    const [status, setStatus] = useState<'checking' | 'connected' | 'error'>('checking');
+    const [message, setMessage] = useState<string>('Testing connection...');
     const [details, setDetails] = useState<string[]>([]);
 
     useEffect(() => {
         const testConnection = async () => {
             try {
-                // First, try to list all databases
+                setStatus('checking');
+                setMessage('Testing connection...');
+                setDetails([]);
+
+                // Display current configuration
+                setDetails(prev => [
+                    ...prev,
+                    `Current Configuration:`,
+                    `URI: ${NEO4J_CONFIG.uri}`,
+                    `User: ${NEO4J_CONFIG.user}`,
+                    `Database: ${NEO4J_CONFIG.database}`
+                ]);
+
+                // List available databases
                 const databases = await neo4jService.listDatabases();
                 setDetails(prev => [...prev, `Available databases: ${databases.join(', ')}`]);
 
-                // Check if our database exists
+                // Check if emotional database exists
                 if (!databases.includes('emotional')) {
-                    setDetails(prev => [...prev, 'Database "emotional" not found. Attempting to create it...']);
+                    setDetails(prev => [...prev, 'Database "emotional" not found, attempting to create...']);
                     try {
                         await neo4jService.createDatabase('emotional');
-                        setDetails(prev => [...prev, 'Database "emotional" created successfully']);
-                    } catch (createError) {
-                        setStatus('error');
-                        setMessage('Failed to create database. Please create it manually in Neo4j Desktop.');
-                        setDetails(prev => [...prev, `Error creating database: ${createError instanceof Error ? createError.message : 'Unknown error'}`]);
-                        return;
+                        setDetails(prev => [...prev, 'Successfully created "emotional" database']);
+                    } catch (error: any) {
+                        setDetails(prev => [...prev, `Failed to create database: ${error.message}`]);
+                        throw error;
                     }
                 }
 
-                // Try to create sample data
-                await neo4jService.createSampleData();
-                setStatus('success');
-                setMessage('Successfully connected to Neo4j and created sample data!');
-                setDetails(prev => [...prev, 'Sample data created successfully']);
-            } catch (error) {
-                setStatus('error');
-                if (error instanceof Error) {
-                    if (error.message.includes('ECONNREFUSED')) {
-                        setMessage('Connection refused. Please make sure Neo4j Desktop is running and the database is started.');
-                        setDetails(prev => [...prev, 'Check if Neo4j Desktop is running', 'Check if the database is started']);
-                    } else if (error.message.includes('authentication')) {
-                        setMessage('Authentication failed. Please check your password in neo4j.ts');
-                        setDetails(prev => [...prev, 'Verify the password in src/config/neo4j.ts']);
-                    } else {
-                        setMessage(`Connection failed: ${error.message}`);
-                        setDetails(prev => [...prev, `Error details: ${error.message}`]);
-                    }
+                // Test connection with a simple query
+                const session = await neo4jService.getSession();
+                try {
+                    await session.run('RETURN 1');
+                    setStatus('connected');
+                    setMessage('Successfully connected to Neo4j!');
+                    setDetails(prev => [...prev, 'Connection test query successful']);
+                } finally {
+                    await session.close();
                 }
+            } catch (error: any) {
+                setStatus('error');
+                let errorMessage = 'Connection failed';
+                
+                if (error.message.includes('ECONNREFUSED')) {
+                    errorMessage += ': Could not connect to Neo4j. Please ensure Neo4j Desktop is running.';
+                } else if (error.message.includes('authentication failure')) {
+                    errorMessage += ': Authentication failed. Please check your credentials.';
+                } else if (error.message.includes('Pool is closed')) {
+                    errorMessage += ': Connection pool was closed. Please refresh the page.';
+                } else {
+                    errorMessage += `: ${error.message}`;
+                }
+                
+                setMessage(errorMessage);
+                setDetails(prev => [...prev, `Error details: ${error.message}`]);
             }
         };
 
         testConnection();
+
+        // Cleanup function
+        return () => {
+            neo4jService.close();
+        };
     }, []);
 
     return (
-        <div style={{
-            padding: '1rem',
-            margin: '1rem 0',
-            borderRadius: '4px',
-            backgroundColor: status === 'testing' ? '#f0f0f0' : 
-                           status === 'success' ? '#e6ffe6' : '#ffe6e6',
-            color: status === 'testing' ? '#666' : 
-                  status === 'success' ? '#006600' : '#cc0000'
-        }}>
-            <div style={{ marginBottom: '0.5rem' }}>{message}</div>
-            {details.length > 0 && (
-                <div style={{ 
-                    fontSize: '0.9em', 
-                    marginTop: '0.5rem',
-                    textAlign: 'left',
-                    padding: '0.5rem',
-                    backgroundColor: 'rgba(0,0,0,0.05)',
-                    borderRadius: '4px'
-                }}>
-                    {details.map((detail, index) => (
-                        <div key={index} style={{ marginBottom: '0.25rem' }}>{detail}</div>
-                    ))}
-                </div>
-            )}
+        <div className="p-4 bg-white rounded-lg shadow">
+            <h2 className="text-xl font-bold mb-4">Neo4j Connection Test</h2>
+            <div className={`p-4 rounded ${
+                status === 'checking' ? 'bg-yellow-100' :
+                status === 'connected' ? 'bg-green-100' : 'bg-red-100'
+            }`}>
+                <p className="font-semibold">{message}</p>
+                {details.length > 0 && (
+                    <ul className="mt-2 list-disc list-inside">
+                        {details.map((detail, index) => (
+                            <li key={index} className="text-sm">{detail}</li>
+                        ))}
+                    </ul>
+                )}
+            </div>
         </div>
     );
 };

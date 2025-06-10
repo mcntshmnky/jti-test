@@ -2,23 +2,65 @@ import neo4j, { Driver, Session } from 'neo4j-driver';
 import { NEO4J_CONFIG } from '../config/neo4j';
 
 class Neo4jService {
-    private driver: Driver;
+    private static instance: Neo4jService;
+    private driver: Driver | null = null;
+    private isInitializing: boolean = false;
 
-    constructor() {
-        this.driver = neo4j.driver(
-            NEO4J_CONFIG.uri,
-            neo4j.auth.basic(NEO4J_CONFIG.user, NEO4J_CONFIG.password)
-        );
+    private constructor() {}
+
+    public static getInstance(): Neo4jService {
+        if (!Neo4jService.instance) {
+            Neo4jService.instance = new Neo4jService();
+        }
+        return Neo4jService.instance;
     }
 
-    getSession(): Session {
-        return this.driver.session({
+    private async initializeDriver(): Promise<Driver> {
+        if (this.driver) {
+            return this.driver;
+        }
+
+        if (this.isInitializing) {
+            // Wait for initialization to complete
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return this.initializeDriver();
+        }
+
+        this.isInitializing = true;
+        try {
+            this.driver = neo4j.driver(
+                NEO4J_CONFIG.uri,
+                neo4j.auth.basic(NEO4J_CONFIG.user, NEO4J_CONFIG.password),
+                {
+                    maxConnectionLifetime: 3600000, // 1 hour
+                    maxConnectionPoolSize: 50,
+                    connectionAcquisitionTimeout: 30000, // 30 seconds
+                }
+            );
+
+            // Verify the connection
+            const session = this.driver.session();
+            try {
+                await session.run('RETURN 1');
+            } finally {
+                await session.close();
+            }
+
+            return this.driver;
+        } finally {
+            this.isInitializing = false;
+        }
+    }
+
+    async getSession(): Promise<Session> {
+        const driver = await this.initializeDriver();
+        return driver.session({
             database: NEO4J_CONFIG.database
         });
     }
 
     async listDatabases(): Promise<string[]> {
-        const session = this.driver.session();
+        const session = await this.getSession();
         try {
             const result = await session.run('SHOW DATABASES');
             return result.records.map(record => record.get('name'));
@@ -28,7 +70,7 @@ class Neo4jService {
     }
 
     async createDatabase(name: string): Promise<void> {
-        const session = this.driver.session();
+        const session = await this.getSession();
         try {
             await session.run(`CREATE DATABASE ${name}`);
         } finally {
@@ -37,7 +79,7 @@ class Neo4jService {
     }
 
     async getGraphData() {
-        const session: Session = this.getSession();
+        const session = await this.getSession();
         try {
             const result = await session.run(`
                 MATCH (n)
@@ -56,7 +98,7 @@ class Neo4jService {
     }
 
     async createSampleData() {
-        const session: Session = this.getSession();
+        const session = await this.getSession();
         try {
             // Clear existing data
             await session.run('MATCH (n) DETACH DELETE n');
@@ -92,9 +134,12 @@ class Neo4jService {
         }
     }
 
-    close() {
-        this.driver.close();
+    async close() {
+        if (this.driver) {
+            await this.driver.close();
+            this.driver = null;
+        }
     }
 }
 
-export const neo4jService = new Neo4jService(); 
+export const neo4jService = Neo4jService.getInstance(); 
