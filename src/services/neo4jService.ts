@@ -17,6 +17,25 @@ class Neo4jService {
         });
     }
 
+    async listDatabases(): Promise<string[]> {
+        const session = this.driver.session();
+        try {
+            const result = await session.run('SHOW DATABASES');
+            return result.records.map(record => record.get('name'));
+        } finally {
+            await session.close();
+        }
+    }
+
+    async createDatabase(name: string): Promise<void> {
+        const session = this.driver.session();
+        try {
+            await session.run(`CREATE DATABASE ${name}`);
+        } finally {
+            await session.close();
+        }
+    }
+
     async getGraphData() {
         const session: Session = this.getSession();
         try {

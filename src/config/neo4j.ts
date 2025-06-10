@@ -7,7 +7,7 @@ export const NEO4J_CONFIG = {
     uri: 'bolt://localhost:7687',
     user: 'neo4j',
     password: 'masterpass', // Replace this with the password you set during Neo4j Desktop installation
-    database: 'JTI-emotional-test'
+    database: 'emotion'
 };
 
 // AURA NEO4J CONFIGURATION
