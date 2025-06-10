@@ -1,10 +1,13 @@
 import './App.css'
+import KnowledgeGraph from './components/KnowledgeGraph'
+import ConnectionTest from './components/ConnectionTest'
 
 function App() {
   return (
     <div className="app">
-      <h1>Hello World!</h1>
-      <p>Welcome to my React TypeScript application</p>
+      <h1>Knowledge Graph Visualization</h1>
+      <ConnectionTest />
+      <KnowledgeGraph />
     </div>
   )
 }
